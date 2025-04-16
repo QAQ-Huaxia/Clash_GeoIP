@@ -3,85 +3,64 @@ name: Update China IP list and generate GeoIP2 database
 on:
   push:
     branches: [ master ]
-  
   workflow_dispatch:
-
   schedule: 
-    - cron:  '0 2 */3 * *'
+    - cron: '0 2 */3 * *'
 
 jobs:
   build:
     name: Generate GeoIP2 database
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # 授予写权限
     steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.14
+        id: go
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v2
-      with:
-        go-version: ^1.14
-      id: go
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      - name: Get dependencies
+        run: go get -v -t -d ./...
 
-    - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
-        if [ -f Gopkg.toml ]; then
-            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-            dep ensure
-        fi
-    - name: Create dist folder
-      run: mkdir -p dist
+      - name: Create dist folder
+        run: mkdir -p dist
 
-    - name: Compile GeoIP conversion bin (Golang)
-      run: ./build.sh
+      - name: Compile GeoIP conversion bin (Golang)
+        run: ./build.sh
 
-    - name: Obtain CN IP lists
-      run: |
-        curl -LR -o dist/ipip_net.txt "https://raw.githubusercontent.com/zhufengme/block_cn_files/refs/heads/master/cn_ip_list.txt"
-        echo >> dist/chunzhen.txt # ensure newline at ending
+      - name: Obtain CN IP lists
+        run: |
+          curl -LR -o dist/ipip_net.txt "https://raw.githubusercontent.com/zhufengme/block_cn_files/refs/heads/master/cn_ip_list.txt"
+          echo >> dist/chunzhen.txt
 
-    - name: Merge and IP lists and deep deduplication
-      run: |
-        cat dist/*.txt | dist/dedup > dist/CN-ip-cidr.txt
+      - name: Merge and deduplicate IP lists
+        run: |
+          cat dist/*.txt | dist/dedup > dist/CN-ip-cidr.txt
 
-    - name: Generate GeoIP2 database
-      run: |
-        CURRENT_DIR=$(pwd)
-        cd dist
-        ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
-        cd $CURRENT_DIR
+      - name: Generate GeoIP2 database
+        run: |
+          cd dist
+          ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
+          cd ..
 
-    - name: Push artifacts to release branch
-      run: |
-        git config --local user.email "10215166+Hackl0us@users.noreply.github.com"
-        git config --local user.name "github-action[bot]"
+      - name: Push artifacts to release branch
+        run: |
+          git config --local user.email "10215166+Hackl0us@users.noreply.github.com"
+          git config --local user.name "github-action[bot]"
+          git fetch
+          git checkout release || git checkout -b release
+          cp -f dist/CN-ip-cidr.txt ./
+          cp -f dist/Country.mmdb ./
+          git add CN-ip-cidr.txt Country.mmdb
+          git commit -m "Updated at $(date)" || echo "No changes to commit"
 
-        git fetch
-        git checkout release
-
-        git checkout --orphan release-orphan
-        git rm -rf .
-
-        cp -rf dist/CN-ip-cidr.txt ./
-        cp -rf dist/Country.mmdb ./
-
-        git add Country.mmdb
-        git add CN-ip-cidr.txt
-        git commit -am "Updated at $(date)"
-
-        git branch -D release
-        git branch -m release
-            
-    - name: GitHub Push
-      uses: ad-m/github-push-action@v0.6.0
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: release
-        force: true
-
-    - name: Purge CDN Cache
-      run: curl ${{ secrets.CDN_URL }}
+      - name: GitHub Push
+        uses: ad-m/github-push-action@v0.6.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: release
+          force: true
