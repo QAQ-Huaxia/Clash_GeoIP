@@ -12,7 +12,7 @@ jobs:
     name: Generate GeoIP2 database
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 授予写权限以推送和创建 Release
+      contents: write # 授予写权限
     steps:
       - name: Set up Go 1.x
         uses: actions/setup-go@v5
@@ -61,56 +61,6 @@ jobs:
       - name: GitHub Push
         uses: ad-m/github-push-action@v0.6.0
         with:
-          github_token: ${{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}}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: release
           force: true
-
-      - name: Check for changes
-        id: check_changes
-        run: |
-          if git diff --quiet HEAD^ HEAD -- CN-ip-cidr.txt Country.mmdb; then
-            echo "changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "changes=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set Release Version
-        if: steps.check_changes.outputs.changes == 'true'
-        run: echo "RELEASE_VERSION=v$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
-
-      - name: Create GitHub Release
-        if: steps.check_changes.outputs.changes == 'true'
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{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}}
-        with:
-          tag_name: ${{ env.RELEASE_VERSION }}
-          release_name: Release
-          body: |
-            Automated release with updated China IP list and GeoIP2 database.
-            Generated at: ${{ github.event.repository.updated_at }}
-          draft: false
-          prerelease: false
-
-      - name: Upload CN-ip-cidr.txt to Release
-        if: steps.check_changes.outputs.changes == 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{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}}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/CN-ip-cidr.txt
-          asset_name: CN-ip-cidr.txt
-          asset_content_type: text/plain
-
-      - name: Upload Country.mmdb to Release
-        if: steps.check_changes.outputs.changes == 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{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}}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/Country.mmdb
-          asset_name: Country.mmdb
-          asset_content_type: application/octet-stream
