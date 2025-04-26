@@ -70,9 +70,5 @@ jobs:
           cp -f dist/Country.mmdb ./
           git add CN-ip-cidr.txt CN-ip-cidr-clash.txt Country.mmdb
           git commit -m "Updated GeoIP database and CN-ip-cidr-clash.txt at $(date)" || echo "No changes to commit"
+          git push origin release
 
-        uses: ad-m/github-push-action@v0.6.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: release
-          force: false # Important: Don't force push
