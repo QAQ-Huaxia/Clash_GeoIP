@@ -1,53 +1,73 @@
-  - name: Check out code
-    uses: actions/checkout@v4
+name: Update China IP list and generate GeoIP2 database
 
-  - name: Get dependencies
-    run: go get -v -t -d ./...
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 
-  - name: Create dist folder
-    run: mkdir -p dist
+jobs:
+  build:
+    name: Generate GeoIP2 database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.21
+        id: go
 
-  - name: Compile GeoIP conversion bin (Golang)
-    run: ./build.sh
+      - name: Check out code
+        uses: actions/checkout@v4
 
-  - name: Obtain CN IP lists
-    run: |
-      curl -LR -o dist/ipip_net.txt "https://raw.githubusercontent.com/zhufengme/block_cn_files/refs/heads/master/cn_ip_list.txt"
+      - name: Get dependencies
+        run: go get -v -t -d ./...
 
-  - name: Merge and deduplicate IP lists
-    run: |
-      cat dist/ipip_net.txt | dist/dedup > dist/CN-ip-cidr.txt
+      - name: Create dist folder
+        run: mkdir -p dist
 
-  - name: Generate CN-ip-cidr-clash.txt
-    run: |
-      sed 's/^/- IP-CIDR,/' dist/CN-ip-cidr.txt > dist/CN-ip-cidr-clash.txt
+      - name: Compile GeoIP conversion bin (Golang)
+        run: ./build.sh
 
-  - name: Generate GeoIP2 database
-    run: |
-      cd dist
-      ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
-      cd ..
+      - name: Obtain CN IP lists
+        run: |
+          curl -LR -o dist/ipip_net.txt "https://raw.githubusercontent.com/zhufengme/block_cn_files/refs/heads/master/cn_ip_list.txt"
 
-  - name: Check for changes
-    id: changes
-    run: |
-      git fetch origin release:release || git checkout -b release
-      if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr-clash.txt CN-ip-cidr-clash.txt; then
-        echo "::set-output name=changed::true"
-      else
-        echo "::set-output name=changed::false"
-      fi
+      - name: Merge and deduplicate IP lists
+        run: |
+          cat dist/ipip_net.txt | dist/dedup > dist/CN-ip-cidr.txt
 
-  - name: Push artifacts to release branch
-    if: steps.changes.outputs.changed == 'true'
-    run: |
-      git config --local user.email "10215166+Hackl0us@users.noreply.github.com"
-      git config --local user.name "github-action[bot]"
-      git fetch
-      git checkout release || git checkout -b release
-      cp -f dist/CN-ip-cidr.txt ./
-      cp -f dist/CN-ip-cidr-clash.txt ./
-      cp -f dist/Country.mmdb ./
-      git add CN-ip-cidr.txt CN-ip-cidr-clash.txt Country.mmdb
-      git commit -m "Updated GeoIP database and CN-ip-cidr-clash.txt at $(date)" || echo "No changes to commit"
-      git push origin release
+      - name: Generate CN-ip-cidr-clash.txt
+        run: |
+          sed 's/^/- IP-CIDR,/' dist/CN-ip-cidr.txt > dist/CN-ip-cidr-clash.txt
+
+      - name: Generate GeoIP2 database
+        run: |
+          cd dist
+          ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
+          cd ..
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git fetch origin release:release || git checkout -b release
+          if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr-clash.txt CN-ip-cidr-clash.txt; then
+            echo "::set-output name=changed::true"
+          else
+            echo "::set-output name=changed::false"
+          fi
+
+      - name: Push artifacts to release branch
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "10215166+Hackl0us@users.noreply.github.com"
+          git config --local user.name "github-action[bot]"
+          git fetch
+          git checkout release || git checkout -b release
+          cp -f dist/CN-ip-cidr.txt ./
+          cp -f dist/CN-ip-cidr-clash.txt ./
+          cp -f dist/Country.mmdb ./
+          git add CN-ip-cidr.txt CN-ip-cidr-clash.txt Country.mmdb
+          git commit -m "Updated GeoIP database and CN-ip-cidr-clash.txt at $(date)" || echo "No changes to commit"
+          git push origin release
