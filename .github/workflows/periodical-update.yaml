@@ -1,53 +1,65 @@
-name: Update China IP list and generate GeoIP2 database
+name: 更新中国IP列表并生成GeoIP2数据库
 
 on:
   push:
     branches: [ master ]
   workflow_dispatch:
-  schedule: 
-    - cron: '0 0 * * *'
+    schedule:
+      - cron: '0 0 * * *'
 
 jobs:
   build:
-    name: Generate GeoIP2 database
+    name: 生成GeoIP2数据库
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 授予写权限
+      contents: write
+
     steps:
-      - name: Set up Go 1.x
+      - name: 设置 Go 1.x
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.14
+          go-version: ^1.21
         id: go
 
-      - name: Check out code
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Get dependencies
+      - name: 获取依赖项
         run: go get -v -t -d ./...
 
-      - name: Create dist folder
+      - name: 创建 dist 文件夹
         run: mkdir -p dist
 
-      - name: Compile GeoIP conversion bin (Golang)
+      - name: 编译 GeoIP 转换二进制文件 (Golang)
         run: ./build.sh
 
-      - name: Obtain CN IP lists
+      - name: 获取 CN IP 列表
         run: |
           curl -LR -o dist/ipip_net.txt "https://raw.githubusercontent.com/zhufengme/block_cn_files/refs/heads/master/cn_ip_list.txt"
-          echo >> dist/chunzhen.txt
+          # 移除 "echo >> dist/chunzhen.txt" 行，除非确实需要
 
-      - name: Merge and deduplicate IP lists
+      - name: 合并并去重 IP 列表
         run: |
           cat dist/*.txt | dist/dedup > dist/CN-ip-cidr.txt
 
-      - name: Generate GeoIP2 database
+      - name: 生成 GeoIP2 数据库
         run: |
           cd dist
           ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
           cd ..
 
-      - name: Push artifacts to release branch
+      - name: 检查更改
+        id: changes
+        run: |
+          git fetch origin release:release || git checkout -b release
+          if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr.txt CN-ip-cidr.txt; then
+            echo "::set-output name=changed::true"
+          else
+            echo "::set-output name=changed::false"
+          fi
+
+      - name: 推送工件到 release 分支
+        if: steps.changes.outputs.changed == 'true'
         run: |
           git config --local user.email "10215166+Hackl0us@users.noreply.github.com"
           git config --local user.name "github-action[bot]"
@@ -57,10 +69,4 @@ jobs:
           cp -f dist/Country.mmdb ./
           git add CN-ip-cidr.txt Country.mmdb
           git commit -m "Updated at $(date)" || echo "No changes to commit"
-
-      - name: GitHub Push
-        uses: ad-m/github-push-action@v0.6.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: release
-          force: true
+          git push origin release
