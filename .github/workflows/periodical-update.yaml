@@ -52,6 +52,7 @@ jobs:
         id: changes
         run: |
           git fetch origin release:release || git checkout -b release
+          git update-index -q --refresh  # Force refresh of Git index 
           if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr.txt CN-ip-cidr.txt; then
             echo "::set-output name=changed::true"
           else
