@@ -1,73 +1,83 @@
-name: Update China IP list and generate GeoIP2 database
+name: 更新中国IP列表并生成GeoIP2数据库
 
 on:
   push:
     branches: [ master ]
+  
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
+
+  schedule: 
+    - cron:  '0 2 */3 * *'
 
 jobs:
   build:
-    name: Generate GeoIP2 database
+    name: 生成GeoIP2数据库
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.21
-        id: go
 
-      - name: Check out code
-        uses: actions/checkout@v4
+    - name: 设置 Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.14
+      id: go
 
-      - name: Get dependencies
-        run: go get -v -t -d ./...
+    - name: 将代码检出到 Go 模块目录
+      uses: actions/checkout@v2
 
-      - name: Create dist folder
-        run: mkdir -p dist
+    - name: 获取依赖项
+      run: |
+        go get -v -t -d ./...
+        if [ -f Gopkg.toml ]; then
+            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+            dep ensure
+        fi
+    - name: 创建 dist 文件夹
+      run: mkdir -p dist
 
-      - name: Compile GeoIP conversion bin (Golang)
-        run: ./build.sh
+    - name: 编译 GeoIP 转换二进制文件 (Golang)
+      run: ./build.sh
 
-      - name: Obtain CN IP lists
-        run: |
-          curl -LR -o dist/ipip_net.txt "https://gist.githubusercontent.com/QAQ-Huaxia/674ccc36bbf104055601cf5f1687e67c/raw/China_IPv4.txt"
-          # Remove the "echo >> dist/chunzhen.txt" line unless it's specifically needed
+    - name: 获取 CN IP 列表
+      run: |
+        curl -LR -o dist/ipip_net.txt "https://file.bairuo.net/iplist/output/Aggregated_ChinaAllNetwork_IPv4.txt"
 
-      - name: Merge and deduplicate IP lists
-        run: |
-          cat dist/*.txt | dist/dedup > dist/CN-ip-cidr.txt
 
-      - name: Generate GeoIP2 database
-        run: |
-          cd dist
-          ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
-          cd ..
+    - name: 合并 IP 列表并删除重复项
+      run: |
+        awk '{print}' dist/*.txt > dist/merge.txt
+        awk '!seen[$0]++' dist/merge.txt > dist/CN-ip-cidr.txt
 
-      - name: Check for changes
-        id: changes
-        run: |
-          git fetch origin release:release || git checkout -b release
-          git update-index -q --refresh  # Force refresh of Git index 
-          if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr.txt CN-ip-cidr.txt; then
-            echo "::set-output name=changed::true"
-          else
-            echo "::set-output name=changed::false"
-          fi
+    - name: 生成 GeoIP2 数据库
+      run: |
+        CURRENT_DIR=$(pwd)
+        cd dist
+        ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
+        cd $CURRENT_DIR
 
-      - name: Push artifacts to release branch
-        if: steps.changes.outputs.changed == 'true'
-        run: |
-          git config --local user.email "10215166+Hackl0us@users.noreply.github.com"
-          git config --local user.name "github-action[bot]"
-          git fetch
-          git checkout release || git checkout -b release
-          cp -f dist/CN-ip-cidr.txt ./
-          cp -f dist/Country.mmdb ./
-          git add CN-ip-cidr.txt Country.mmdb
-          git commit -m "Updated at $(date)" || echo "No changes to commit"
-          git push origin release
+    - name: 推送工件到 release 分支
+      run: |
+        git config --local user.email "33897984+Masaiki@users.noreply.github.com"
+        git config --local user.name "github-action[bot]"
+
+        git fetch
+        git checkout release
+
+        git checkout --orphan release-orphan
+        git rm -rf .
+
+        cp -rf dist/CN-ip-cidr.txt ./
+        cp -rf dist/Country.mmdb ./
+
+        git add Country.mmdb
+        git add CN-ip-cidr.txt
+        git commit -am "在 $(date) 更新"
+
+        git branch -D release
+        git branch -m release
+            
+    - name: GitHub Push
+      uses: ad-m/github-push-action@v0.6.0
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: release
+        force: true
