@@ -35,7 +35,7 @@ jobs:
 
       - name: Obtain CN IP lists
         run: |
-          curl -LR -o dist/ipip_net.txt "https://raw.githubusercontent.com/zhufengme/block_cn_files/refs/heads/master/cn_ip_list.txt"
+          curl -LR -o dist/ipip_net.txt "https://gist.githubusercontent.com/QAQ-Huaxia/674ccc36bbf104055601cf5f1687e67c/raw/China_IPv4.list"
           # Remove the "echo >> dist/chunzhen.txt" line unless it's specifically needed
 
       - name: Merge and deduplicate IP lists
