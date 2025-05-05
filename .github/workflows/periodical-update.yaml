@@ -33,9 +33,16 @@ jobs:
       - name: Compile GeoIP conversion bin (Golang)
         run: ./build.sh
 
+      - name: Test Network Connectivity
+        run: |
+          ping -c 3 github.com
+          ping -c 3 file.bairuo.net
+          wget -q --spider https://file.bairuo.net/iplist/output/Aggregated_ChinaAllNetwork_IPv4.txt
+
       - name: Obtain CN IP lists
         run: |
-          curl -LR -o dist/CN-ip-cidr.txt "https://file.bairuo.net/iplist/output/Aggregated_ChinaAllNetwork_IPv4.txt"
+          set -e # Exit immediately if a command exits with a non-zero status.
+          curl -L --connect-timeout 10 -o dist/CN-ip-cidr.txt "https://file.bairuo.net/iplist/output/Aggregated_ChinaAllNetwork_IPv4.txt" || { echo "Failed to download IP list"; exit 1; }
 
       - name: Generate GeoIP2 database
         run: |
