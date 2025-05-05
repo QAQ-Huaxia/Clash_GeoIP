@@ -33,45 +33,29 @@ jobs:
       - name: Compile GeoIP conversion bin (Golang)
         run: ./build.sh
 
-      - name: Test Network Connectivity
-        run: |
-          ping -c 3 github.com
-          ping -c 3 file.bairuo.net
-          wget -q --spider https://file.bairuo.net/iplist/output/Aggregated_ChinaAllNetwork_IPv4.txt
-
       - name: Obtain CN IP lists
         run: |
-          set -e # Exit immediately if a command exits with a non-zero status.
-          curl -L --connect-timeout 10 -o dist/CN-ip-cidr.txt "https://file.bairuo.net/iplist/output/Aggregated_ChinaAllNetwork_IPv4.txt" || { echo "Failed to download IP list"; exit 1; }
+          curl -LR -o dist/ipip_net.txt "https://raw.githubusercontent.com/zhufengme/block_cn_files/refs/heads/master/cn_ip_list.txt"
+          # Remove the "echo >> dist/chunzhen.txt" line unless it's specifically needed
+
+      - name: Merge and deduplicate IP lists
+        run: |
+          cat dist/*.txt | dist/dedup > dist/CN-ip-cidr.txt
 
       - name: Generate GeoIP2 database
         run: |
           cd dist
           ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
-          chmod 644 Country.mmdb # Set read/write for owner, read for others
           cd ..
 
       - name: Check for changes
         id: changes
         run: |
           git fetch origin release:release || git checkout -b release
-          git update-index -q --refresh
-          
-          changed=false
-          
-          # Check if Country.mmdb has changed
-          if ! git diff --quiet HEAD -- dist/Country.mmdb; then
+          git update-index -q --refresh  # Force refresh of Git index 
+          if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr.txt CN-ip-cidr.txt; then
             echo "::set-output name=changed::true"
-            changed=true
-          fi
-          
-          # Check if CN-ip-cidr.txt has changed
-          if ! git diff --quiet HEAD -- dist/CN-ip-cidr.txt; then
-            echo "::set-output name=changed::true"
-            changed=true
-          fi
-          
-          if [[ "$changed" == false ]]; then
+          else
             echo "::set-output name=changed::false"
           fi
 
@@ -85,5 +69,5 @@ jobs:
           cp -f dist/CN-ip-cidr.txt ./
           cp -f dist/Country.mmdb ./
           git add CN-ip-cidr.txt Country.mmdb
-          git commit -m "Updated at $(date -u)" || echo "No changes to commit"
+          git commit -m "Updated at $(date)" || echo "No changes to commit"
           git push origin release
