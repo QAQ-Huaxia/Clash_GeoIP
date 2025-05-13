@@ -44,7 +44,7 @@ jobs:
 
       - name: Create CN-ip-cidr-clash.txt
         run: |
-          sed 's/^/  - IP-CIDR, /' dist/CN-ip-cidr.txt > dist/CN-ip-cidr-clash.txt
+          sed '/^#/!s/^/  - IP-CIDR, /' dist/CN-ip-cidr.txt > dist/CN-ip-cidr-clash.txt
 
       - name: Check for changes
         id: changes
