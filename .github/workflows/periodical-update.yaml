@@ -42,15 +42,15 @@ jobs:
           ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
           cd ..
 
-      - name: Create CN-ip-cidr-clash.txt
+      - name: Create CN-ip-cidr-clash.list
         run: |
-          sed '/^#/!s/^/IP-CIDR,/' dist/CN-ip-cidr.txt > dist/CN-ip-cidr-clash.txt
+          sed '/^#/!s/^/IP-CIDR,/' dist/CN-ip-cidr.txt > dist/CN-ip-cidr-clash.list
 
       - name: Check for changes
         id: changes
         run: |
           git fetch origin release:release || git checkout -b release
-          if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr.txt CN-ip-cidr.txt || ! diff -q dist/CN-ip-cidr-clash.txt CN-ip-cidr-clash.txt; then
+          if ! diff -q dist/Country.mmdb Country.mmdb || ! diff -q dist/CN-ip-cidr.txt CN-ip-cidr.txt || ! diff -q dist/CN-ip-cidr-clash.list CN-ip-cidr-clash.list; then
             echo "::set-output name=changed::true"
           else
             echo "::set-output name=changed::false"
@@ -67,10 +67,10 @@ jobs:
 
           cp -f dist/CN-ip-cidr.txt ./
           cp -f dist/Country.mmdb ./
-          cp -f dist/CN-ip-cidr-clash.txt ./
+          cp -f dist/CN-ip-cidr-clash.list ./
 
           git add Country.mmdb
           git add CN-ip-cidr.txt
-          git add CN-ip-cidr-clash.txt
+          git add CN-ip-cidr-clash.list
           git commit -m "Updated at $(date)" || echo "No changes to commit"
           git push origin release
