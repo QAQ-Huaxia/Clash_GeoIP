@@ -1,4 +1,4 @@
-  - IP-CIDR, # Generate by TOHUNET at 2025-05-13 09:06:27.349723
+# Generate by TOHUNET at 2025-05-13 09:06:27.349723
   - IP-CIDR, 1.0.128.0/17
   - IP-CIDR, 1.1.8.0/24
   - IP-CIDR, 1.1.128.0/17
