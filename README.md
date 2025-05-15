@@ -8,7 +8,7 @@
 |  :--:  |  :--:  |     :--:     |     :--:    | ---- |
 | IP-CIDR 列表 | CN-ip-cidr.txt | [点我下载](https://github.com/QAQ-Huaxia/Clash_GeoIP/raw/release/CN-ip-cidr.txt) | [点我起飞](https://cdn.jsdelivr.net/gh/Hackl0us/GeoIP2-CN@release/CN-ip-cidr.txt) | 防火墙、较老的代理工具等 |
 | GeoIP2 数据库 | Country.mmdb | [点我下载](https://github.com/QAQ-Huaxia/Clash_GeoIP/raw/release/Country.mmdb) | [点我起飞](https://cdn.jsdelivr.net/gh/Hackl0us/GeoIP2-CN@release/Country.mmdb) | Surge, Shadowrocket,<br>QuantumultX, Clash<br>等较新的代理工具|
-| Clash Rule | CN-ip-cidr-clash.txt | [点我下载](https://github.com/QAQ-Huaxia/Clash_GeoIP/raw/release/CN-ip-cidr-clash.txt) | 未提供 | 加入Clash Rule |
+| Clash Rule | CN-ip-cidr-clash.list | [点我下载](https://github.com/QAQ-Huaxia/Clash_GeoIP/raw/release/CN-ip-cidr-clash.list) | 未提供 | 加入Clash Rule |
 
 对于网络状况良好、无污染的环境下，建议选择 GitHub RAW 的方式下载，因为可以第一获取到最新的资源，因为服务器在境外，可能下载响应时间和速度稍长，但因为文件小，所以通常问题不大。
 
