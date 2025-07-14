@@ -34,7 +34,6 @@ jobs:
 
       - name: Obtain CN IP lists
         run: |
-#          curl -L -o dist/CN-ip-cidr1.txt "https://file.bairuo.net/iplist/output/Aggregated_ChinaAllNetwork_IPv4.txt"
           curl -L -o dist/CN-ip-cidr2.txt "https://raw.githubusercontent.com/DH-Teams/DH-Geo_AS_IP_CN/main/Geo_AS_IP_CN.txt"
           curl -L -o dist/CN-ip-cidr2.txt "https://raw.githubusercontent.com/gaoyifan/china-operator-ip/refs/heads/ip-lists/china.txt"
 
