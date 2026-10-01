@@ -1,4 +1,4 @@
-name: Update China IP list and generate GeoIP2 database
+name: Update China IP list database
 
 on:
   push:
