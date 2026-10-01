@@ -1,4 +1,3 @@
-```yaml
 name: Update China IP list and generate GeoIP2 database
 
 on:
