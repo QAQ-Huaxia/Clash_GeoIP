@@ -1,3 +1,4 @@
+```yaml
 name: Update China IP list and generate GeoIP2 database
 
 on:
@@ -7,88 +8,316 @@ on:
   schedule:
     - cron: '30 2 * * *'
 
+# ============================================================
+# 防止多个 Workflow 同时更新 release 分支
+# ============================================================
+
+concurrency:
+  group: update-china-ip-list
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Generate GeoIP2 database
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     permissions:
       contents: write
 
     steps:
-      - name: Set up Go 1.x
+      # ============================================================
+      # 基础环境
+      # ============================================================
+
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.21
+          go-version-file: go.mod
+          cache: true
 
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v4
+      - name: Download Go dependencies
+        run: go mod download
 
-      - name: Get dependencies
-        run: go get -v -t -d ./...
+      - name: Verify Go dependencies
+        run: go mod verify
+
+      # ============================================================
+      # 编译 GeoIP 转换程序
+      # ============================================================
 
       - name: Create dist folder
         run: mkdir -p dist
 
       - name: Compile GeoIP conversion bin (Golang)
-        run: ./build.sh
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Check GeoIP conversion binary
+        run: |
+          test -x dist/ipip2mmdb
+
+      # ============================================================
+      # 获取中国 IP 数据
+      # ============================================================
 
       - name: Obtain CN IP lists
         run: |
-          curl -fL --retry 3 --retry-delay 2 \
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
             -o dist/CN-ip-cidr1.txt \
             "https://metowolf.github.io/iplist/data/country/CN.txt"
 
-          curl -fL --retry 3 --retry-delay 2 \
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
             -o dist/CN-ip-cidr2.txt \
             "https://raw.githubusercontent.com/DH-Teams/DH-Geo_AS_IP_CN/main/Geo_AS_IP_CN.txt"
 
+      # ============================================================
+      # 检查下载结果
+      # ============================================================
+
+      - name: Validate downloaded files
+        run: |
+          set -e
+
+          for file in \
+            dist/CN-ip-cidr1.txt \
+            dist/CN-ip-cidr2.txt
+          do
+            if [ ! -s "$file" ]; then
+              echo "ERROR: Downloaded file is empty: $file"
+              exit 1
+            fi
+
+            echo "Validated: $file"
+            echo "Size: $(wc -c < "$file") bytes"
+            echo "Lines: $(wc -l < "$file")"
+          done
+
+      # ============================================================
+      # 合并 CN IP 数据
+      # 清理 CRLF、空行，并确保不同文件之间不会发生内容粘连
+      # ============================================================
+
       - name: Merge CN IP lists
         run: |
-          {
-            sed 's/\r$//' dist/CN-ip-cidr1.txt
-            printf '\n'
-            sed 's/\r$//' dist/CN-ip-cidr2.txt
-          } > dist/CN-ip-cidr.txt
+          awk '
+            {
+              sub(/\r$/, "")
+            }
+
+            /^[[:space:]]*$/ {
+              next
+            }
+
+            /^#/ {
+              next
+            }
+
+            {
+              print
+            }
+          ' \
+            dist/CN-ip-cidr1.txt \
+            dist/CN-ip-cidr2.txt \
+            > dist/CN-ip-cidr.txt
+
+      # ============================================================
+      # 检查并清理 CN IP 数据
+      # ============================================================
+
+      - name: Validate CN IP CIDR list
+        run: |
+          set -e
+
+          if [ ! -s dist/CN-ip-cidr.txt ]; then
+            echo "ERROR: Merged CN IP list is empty."
+            exit 1
+          fi
+
+          invalid_count=$(awk '
+            !/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/([0-9]|[12][0-9]|3[0-2])$/ {
+              count++
+            }
+            END {
+              print count + 0
+            }
+          ' dist/CN-ip-cidr.txt)
+
+          if [ "$invalid_count" -gt 0 ]; then
+            echo "ERROR: Found $invalid_count invalid CIDR entries."
+            echo "Invalid entries:"
+            awk '
+              !/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/([0-9]|[12][0-9]|3[0-2])$/ {
+                print
+              }
+            ' dist/CN-ip-cidr.txt | head -20
+            exit 1
+          fi
+
+          echo "All CIDR entries passed format validation."
+
+      # ============================================================
+      # 去重
+      # ============================================================
 
       - name: Deduplicate CN IP list
         run: |
-          sed -i '/^[[:space:]]*$/d' dist/CN-ip-cidr.txt
           sort -u dist/CN-ip-cidr.txt -o dist/CN-ip-cidr.txt
+
+      # ============================================================
+      # 检查 IP 数据数量
+      # 防止上游异常导致只下载到极少量数据后仍然生成数据库
+      # ============================================================
+
+      - name: Check CN IP list size
+        run: |
+          count=$(wc -l < dist/CN-ip-cidr.txt)
+
+          echo "Final CN CIDR count: $count"
+
+          if [ "$count" -lt 1000 ]; then
+            echo "ERROR: CN IP list contains fewer than 1000 CIDR entries."
+            echo "The upstream data may be incomplete or unavailable."
+            exit 1
+          fi
+
+      # ============================================================
+      # 生成 GeoIP2 数据库
+      # ============================================================
 
       - name: Generate GeoIP2 database
         run: |
           cd dist
-          ./ipip2mmdb -s ./CN-ip-cidr.txt -d Country.mmdb
+
+          ./ipip2mmdb \
+            -s ./CN-ip-cidr.txt \
+            -d Country.mmdb
+
           cd ..
+
+      # ============================================================
+      # 检查 GeoIP2 数据库
+      # ============================================================
+
+      - name: Validate GeoIP2 database
+        run: |
+          if [ ! -s dist/Country.mmdb ]; then
+            echo "ERROR: Country.mmdb was not generated or is empty."
+            exit 1
+          fi
+
+          echo "Country.mmdb generated successfully."
+          echo "Size: $(wc -c < dist/Country.mmdb) bytes"
+
+      # ============================================================
+      # 生成 Clash IP-CIDR 规则
+      # ============================================================
 
       - name: Create CN-ip-cidr-clash.list
         run: |
-          sed '/^#/!s/^/IP-CIDR,/' dist/CN-ip-cidr.txt > dist/CN-ip-cidr-clash.list
+          sed 's/^/IP-CIDR,/' \
+            dist/CN-ip-cidr.txt \
+            > dist/CN-ip-cidr-clash.list
 
-      - name: Check for changes
-        id: changes
+      # ============================================================
+      # 检查 Clash 规则文件
+      # ============================================================
+
+      - name: Validate Clash list
+        run: |
+          if [ ! -s dist/CN-ip-cidr-clash.list ]; then
+            echo "ERROR: Clash list is empty."
+            exit 1
+          fi
+
+          invalid_count=$(awk '
+            !/^IP-CIDR,[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/([0-9]|[12][0-9]|3[0-2])$/ {
+              count++
+            }
+            END {
+              print count + 0
+            }
+          ' dist/CN-ip-cidr-clash.list)
+
+          if [ "$invalid_count" -gt 0 ]; then
+            echo "ERROR: Found $invalid_count invalid Clash rules."
+            exit 1
+          fi
+
+          echo "Clash list validation passed."
+
+      # ============================================================
+      # 获取 release 分支
+      # ============================================================
+
+      - name: Prepare release branch
         run: |
           if git ls-remote --exit-code --heads origin release >/dev/null 2>&1; then
             git fetch origin release:release
           else
+            echo "release branch does not exist. Creating it from current branch."
             git branch release
           fi
 
+      # ============================================================
+      # 检查生成的数据是否发生变化
+      # ============================================================
+
+      - name: Check for changes
+        id: changes
+        run: |
           changed=false
 
           if ! cmp -s dist/Country.mmdb <(git show release:Country.mmdb 2>/dev/null); then
+            echo "Country.mmdb has changed."
             changed=true
           fi
 
           if ! cmp -s dist/CN-ip-cidr.txt <(git show release:CN-ip-cidr.txt 2>/dev/null); then
+            echo "CN-ip-cidr.txt has changed."
             changed=true
           fi
 
           if ! cmp -s dist/CN-ip-cidr-clash.list <(git show release:CN-ip-cidr-clash.list 2>/dev/null); then
+            echo "CN-ip-cidr-clash.list has changed."
             changed=true
           fi
 
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+          if [ "$changed" = "true" ]; then
+            echo "Changes detected."
+          else
+            echo "No changes detected."
+          fi
+
+      # ============================================================
+      # 推送生成文件到 release 分支
+      # ============================================================
 
       - name: Push artifacts to release branch
         if: steps.changes.outputs.changed == 'true'
@@ -102,10 +331,14 @@ jobs:
           cp -f dist/Country.mmdb ./
           cp -f dist/CN-ip-cidr-clash.list ./
 
-          git add Country.mmdb
-          git add CN-ip-cidr.txt
-          git add CN-ip-cidr-clash.list
+          git add \
+            Country.mmdb \
+            CN-ip-cidr.txt \
+            CN-ip-cidr-clash.list
 
-          git commit -m "Updated at $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git commit \
+            -m "Updated at $(date '+%Y-%m-%d %H:%M:%S')" \
+            || echo "No changes to commit"
 
           git push origin release
+```
