@@ -89,7 +89,14 @@ GeoIP2 数据库的大小仅为 100 KB 左右，对比原来庞大的数据库�
 
 本项目 Fork 自 [JMVoid/ipip2mmdb](https://github.com/JMVoid/ipip2mmdb) 项目，并由 [Hackl0us](https://github.com/Hackl0us) 加以调整和修改。
 
-项目中所使用的 IP 地址信息来自于 ([metowo](https://github.com/metowolf/iplist) & [DH Team](https://github.com/DH-Teams/DH-Geo_AS_IP_CN) )& ([misakaio - 备选源](https://github.com/misakaio/chnroutes2))
+项目中所使用的 IP 地址信息来自于
+已启用源：
+([metowo](https://github.com/metowolf/iplist) 
+[DH Team](https://github.com/DH-Teams/DH-Geo_AS_IP_CN) )
+
+尚未启用备选源：
+([misakaio](https://github.com/misakaio/chnroutes2))
+([苍狼山庄](https://ispip.clang.cn))
 
 GeoIP® 商标版权归 [MaxMind](https://www.maxmind.com/) 公司所有。
 
