@@ -37,7 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'   # 强制指定 Go 1.22+
+          go-version: '1.22'
           cache: true
 
       - name: Download Go dependencies
@@ -208,33 +208,22 @@ jobs:
           cd ..
 
       # ============================================================
-      # 转换生成 .dat (.db) 和 .mrs 格式
+      # 生成 .mrs 规则集格式
       # ============================================================
 
-      - name: Clone and Build MetaCubeX tools (geo & meta-rules-converter)
+      - name: Clone converter and build cn.mrs
         run: |
-          git clone https://github.com/MetaCubeX/geo.git geo-tool
-          cd geo-tool
-          go build -o ../geo-bin ./cmd/geo
-          cd ..
-
           git clone https://github.com/MetaCubeX/meta-rules-converter.git convert-tool
-
-      - name: Build geoip.dat and cn.mrs
-        run: |
-          cd dist
-          # 修复参数顺序：将输出文件名由 -f 指定，输入文件 Country.mmdb 放在最后
-          ../geo-bin convert ip -i maxmind -o v2ray -f geoip.dat Country.mmdb
-          cd ..
-
-          # 使用 meta-rules-converter 将生成的 geoip.dat 转为 Meta 规则集格式 (.mrs)
           cd convert-tool
-          go run ./ geoip -f ../dist/geoip.dat -o ../dist/
+          # 直接利用清洗好的 IP 网段文本生成对应的 mrs 规则
+          go run ./ geoip -f ../dist/CN-ip-cidr.txt -o ../dist/
           cd ..
 
-          # 规范化处理 mrs 文件命名（兼容不同版本工具输出的大小写）
+          # 规范化处理 mrs 文件命名
           if [ -f "dist/CN.mrs" ] && [ ! -f "dist/cn.mrs" ]; then
             mv dist/CN.mrs dist/cn.mrs
+          elif [ -f "dist/cn-ip-cidr.mrs" ] && [ ! -f "dist/cn.mrs" ]; then
+            mv dist/cn-ip-cidr.mrs dist/cn.mrs
           fi
 
       # ============================================================
@@ -259,7 +248,6 @@ jobs:
             "dist/Country.mmdb"
             "dist/CN-ip-cidr.txt"
             "dist/CN-ip-cidr-clash.list"
-            "dist/geoip.dat"
             "dist/cn.mrs"
           )
 
@@ -302,9 +290,6 @@ jobs:
           if ! cmp -s dist/CN-ip-cidr-clash.list <(git show release:CN-ip-cidr-clash.list 2>/dev/null); then
             changed=true
           fi
-          if ! cmp -s dist/geoip.dat <(git show release:geoip.dat 2>/dev/null); then
-            changed=true
-          fi
           if ! cmp -s dist/cn.mrs <(git show release:cn.mrs 2>/dev/null); then
             changed=true
           fi
@@ -332,18 +317,16 @@ jobs:
           cp -f dist/CN-ip-cidr.txt ./
           cp -f dist/Country.mmdb ./
           cp -f dist/CN-ip-cidr-clash.list ./
-          cp -f dist/geoip.dat ./
           cp -f dist/cn.mrs ./
 
           git add \
             Country.mmdb \
             CN-ip-cidr.txt \
             CN-ip-cidr-clash.list \
-            geoip.dat \
             cn.mrs
 
           git commit \
-            -m "Updated all formats (mmdb, list, dat, mrs) at $(date '+%Y-%m-%d %H:%M:%S')" \
+            -m "Updated all formats (mmdb, list, mrs) at $(date '+%Y-%m-%d %H:%M:%S')" \
             || echo "No changes to commit"
 
           git push origin release
