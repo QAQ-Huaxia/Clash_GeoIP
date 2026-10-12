@@ -180,12 +180,32 @@ jobs:
           echo "All CIDR entries passed format validation."
 
       # ============================================================
-      # 去重
+      # 网段聚合与去重（语义级合并相邻/重叠网段）
       # ============================================================
 
-      - name: Deduplicate CN IP list
+      - name: Aggregate and Deduplicate CIDR list
         run: |
-          sort -u dist/CN-ip-cidr.txt -o dist/CN-ip-cidr.txt
+          python3 - <<'EOF'
+          import ipaddress
+
+          networks = set()
+          with open('dist/CN-ip-cidr.txt', 'r') as f:
+              for line in f:
+                  line = line.strip()
+                  if line and not line.startswith('#'):
+                      try:
+                          networks.add(ipaddress.ip_network(line, strict=False))
+                      except ValueError:
+                          pass
+
+          collapsed = list(ipaddress.collapse_addresses(networks))
+
+          with open('dist/CN-ip-cidr.txt', 'w') as f:
+              for net in collapsed:
+                  f.write(str(net) + '\n')
+
+          print(f"Aggregated CIDR count: {len(collapsed)}")
+          EOF
 
       # ============================================================
       # 检查 IP 数据数量
