@@ -37,7 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'   # 修复点：强制指定 Go 1.22+，避免使用默认的过时 Go 1.14
+          go-version: '1.22'   # 强制指定 Go 1.22+
           cache: true
 
       - name: Download Go dependencies
@@ -213,20 +213,18 @@ jobs:
 
       - name: Clone and Build MetaCubeX tools (geo & meta-rules-converter)
         run: |
-          # 直接 clone 官方 geo 工具并编译
           git clone https://github.com/MetaCubeX/geo.git geo-tool
           cd geo-tool
-          go build -o ../dist/geo-bin ./cmd/geo
+          go build -o ../geo-bin ./cmd/geo
           cd ..
 
-          # 克隆 meta-rules-converter 用于编译 mrs 规则集
           git clone https://github.com/MetaCubeX/meta-rules-converter.git convert-tool
 
       - name: Build geoip.dat and cn.mrs
         run: |
           cd dist
-          # 利用刚才编译好的 geo-bin 将 Country.mmdb 转换成标准的 v2ray geoip.dat
-          ./geo-bin convert ip -i maxmind -o v2ray -f Country.mmdb geoip.dat
+          # 修复参数顺序：将输出文件名由 -f 指定，输入文件 Country.mmdb 放在最后
+          ../geo-bin convert ip -i maxmind -o v2ray -f geoip.dat Country.mmdb
           cd ..
 
           # 使用 meta-rules-converter 将生成的 geoip.dat 转为 Meta 规则集格式 (.mrs)
