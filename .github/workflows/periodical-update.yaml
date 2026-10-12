@@ -213,8 +213,8 @@ jobs:
 
       - name: Install MetaCubeX tools for DAT and MRS
         run: |
-          # 安装官方 geo 转换工具（将 mmdb 转为 v2ray 格式 geoip.dat）
-          go install -trimpath -ldflags="-s -w -buildid=" github.com/metacubex/geo/cmd/geo@master
+          # 修正：使用正确的 go install 语法（使用 @latest 或去掉版本直接拉取，或者用 go install 命令）
+          go install github.com/metacubex/geo/cmd/geo@latest
           
           # 克隆 meta-rules-converter 用于编译 mrs 规则集
           git clone https://github.com/MetaCubeX/meta-rules-converter.git convert-tool
