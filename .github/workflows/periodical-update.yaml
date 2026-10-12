@@ -213,9 +213,10 @@ jobs:
 
       - name: Install MetaCubeX tools for DAT and MRS
         run: |
-          # 切换到 /tmp 目录安装全局工具，避免受到当前项目 go.mod 限制
-          cd /tmp
-          go install github.com/metacubex/geo/cmd/geo@latest
+          # 显式开启 GO111MODULE=on 并在临时模块中安装 geo 工具，彻底避免 GOPATH 模式报错
+          mkdir -p /tmp/install-geo && cd /tmp/install-geo
+          go mod init temp
+          GO111MODULE=on go install github.com/metacubex/geo/cmd/geo@latest
           
           # 回到工作目录并克隆 meta-rules-converter 用于编译 mrs 规则集
           cd -
