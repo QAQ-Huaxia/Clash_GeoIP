@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    name: Generate GeoIP2 database
+    name: Generate GeoIP2 database and MRS ruleset
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -47,7 +47,7 @@ jobs:
         run: go mod verify
 
       # ============================================================
-      # 编译 GeoIP 转换程序
+      # 编译 GeoIP 转换程序 & 获取 Mihomo 核心（用于生成 mrs）
       # ============================================================
 
       - name: Create dist folder
@@ -61,6 +61,18 @@ jobs:
       - name: Check GeoIP conversion binary
         run: |
           test -x dist/ipip2mmdb
+
+      - name: Download Mihomo binary for MRS conversion
+        run: |
+          MIHOMO_VERSION=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          if [ -z "$MIHOMO_VERSION" ]; then
+            MIHOMO_VERSION="1.19.3" # 兜底版本
+          fi
+          echo "Downloading Mihomo v$MIHOMO_VERSION..."
+          curl -sL -o mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz"
+          gunzip mihomo.gz
+          chmod +x mihomo
+          mv mihomo dist/mihomo
 
       # ============================================================
       # 获取中国 IP 数据
@@ -253,7 +265,7 @@ jobs:
           echo "Size: $(wc -c < dist/Country.mmdb) bytes"
 
       # ============================================================
-      # 生成 Clash IP-CIDR 规则
+      # 生成 Clash IP-CIDR 规则（文本格式）
       # ============================================================
 
       - name: Create CN-ip-cidr-clash.list
@@ -261,6 +273,32 @@ jobs:
           sed 's/^/IP-CIDR,/' \
             dist/CN-ip-cidr.txt \
             > dist/CN-ip-cidr-clash.list
+
+      # ============================================================
+      # 生成并转换 Mihomo 标准 .mrs 二进制规则文件
+      # ============================================================
+
+      - name: Generate Mihomo MRS ruleset
+        run: |
+          cd dist
+          # 转换命令：convert-ruleset <behavior> <format> <input> <output>
+          # 此处 behavior 为 ipcidr，format 为 text
+          ./mihomo convert-ruleset ipcidr text CN-ip-cidr.txt CN-ip-cidr.mrs
+          cd ..
+
+      # ============================================================
+      # 检查 .mrs 规则文件
+      # ============================================================
+
+      - name: Validate MRS ruleset
+        run: |
+          if [ ! -s dist/CN-ip-cidr.mrs ]; then
+            echo "ERROR: CN-ip-cidr.mrs was not generated or is empty."
+            exit 1
+          fi
+
+          echo "CN-ip-cidr.mrs generated successfully."
+          echo "Size: $(wc -c < dist/CN-ip-cidr.mrs) bytes"
 
       # ============================================================
       # 检查 Clash 规则文件
@@ -326,6 +364,11 @@ jobs:
             changed=true
           fi
 
+          if ! cmp -s dist/CN-ip-cidr.mrs <(git show release:CN-ip-cidr.mrs 2>/dev/null); then
+            echo "CN-ip-cidr.mrs has changed."
+            changed=true
+          fi
+
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
           if [ "$changed" = "true" ]; then
@@ -349,11 +392,13 @@ jobs:
           cp -f dist/CN-ip-cidr.txt ./
           cp -f dist/Country.mmdb ./
           cp -f dist/CN-ip-cidr-clash.list ./
+          cp -f dist/CN-ip-cidr.mrs ./
 
           git add \
             Country.mmdb \
             CN-ip-cidr.txt \
-            CN-ip-cidr-clash.list
+            CN-ip-cidr-clash.list \
+            CN-ip-cidr.mrs
 
           git commit \
             -m "Updated at $(date '+%Y-%m-%d %H:%M:%S')" \
