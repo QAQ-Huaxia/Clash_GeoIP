@@ -211,21 +211,22 @@ jobs:
       # 转换生成 .dat (.db) 和 .mrs 格式
       # ============================================================
 
-      - name: Install MetaCubeX tools for DAT and MRS
+      - name: Clone and Build MetaCubeX tools (geo & meta-rules-converter)
         run: |
-          # 规避 go install @version 语法限制，直接通过 go install 不带版本或者用 go get 后 install
-          go install github.com/metacubex/geo/cmd/geo@master || {
-            go install -v github.com/metacubex/geo/cmd/geo@latest
-          }
-          
+          # 直接 clone 官方 geo 工具并编译，彻底绕过 go install 的版本语法限制
+          git clone https://github.com/MetaCubeX/geo.git geo-tool
+          cd geo-tool
+          go build -o ../dist/geo-bin ./cmd/geo
+          cd ..
+
           # 克隆 meta-rules-converter 用于编译 mrs 规则集
           git clone https://github.com/MetaCubeX/meta-rules-converter.git convert-tool
 
       - name: Build geoip.dat and cn.mrs
         run: |
           cd dist
-          # 利用 geo 工具将 Country.mmdb 转换成标准的 v2ray geoip.dat
-          geo convert ip -i maxmind -o v2ray -f Country.mmdb geoip.dat
+          # 利用刚才编译好的 geo-bin 将 Country.mmdb 转换成标准的 v2ray geoip.dat
+          ./geo-bin convert ip -i maxmind -o v2ray -f Country.mmdb geoip.dat
           cd ..
 
           # 使用 meta-rules-converter 将生成的 geoip.dat 转为 Meta 规则集格式 (.mrs)
