@@ -1,4 +1,4 @@
-name: Update China IP list database
+name: Update China IP list and generate GeoIP2 database
 
 on:
   push:
@@ -17,9 +17,9 @@ concurrency:
 
 jobs:
   build:
-    name: Generate GeoIP and Rules Database
+    name: Generate GeoIP2 database
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     permissions:
       contents: write
@@ -37,7 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
           cache: true
 
       - name: Download Go dependencies
@@ -118,6 +118,7 @@ jobs:
 
       # ============================================================
       # 合并 CN IP 数据
+      # 清理 CRLF、空行，并确保不同文件之间不会发生内容粘连
       # ============================================================
 
       - name: Merge CN IP lists
@@ -167,6 +168,12 @@ jobs:
 
           if [ "$invalid_count" -gt 0 ]; then
             echo "ERROR: Found $invalid_count invalid CIDR entries."
+            echo "Invalid entries:"
+            awk '
+              !/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/([0-9]|[12][0-9]|3[0-2])$/ {
+                print
+              }
+            ' dist/CN-ip-cidr.txt | head -20
             exit 1
           fi
 
@@ -182,6 +189,7 @@ jobs:
 
       # ============================================================
       # 检查 IP 数据数量
+      # 防止上游异常导致只下载到极少量数据后仍然生成数据库
       # ============================================================
 
       - name: Check CN IP list size
@@ -192,39 +200,40 @@ jobs:
 
           if [ "$count" -lt 1000 ]; then
             echo "ERROR: CN IP list contains fewer than 1000 CIDR entries."
+            echo "The upstream data may be incomplete or unavailable."
             exit 1
           fi
 
       # ============================================================
-      # 生成 GeoIP2 (.mmdb) 数据库
+      # 生成 GeoIP2 数据库
       # ============================================================
 
       - name: Generate GeoIP2 database
         run: |
           cd dist
+
           ./ipip2mmdb \
             -s ./CN-ip-cidr.txt \
             -d Country.mmdb
+
           cd ..
 
       # ============================================================
-      # 生成 .mrs 规则集格式（使用官方 geo 工具直接从 mmdb 转换）
+      # 检查 GeoIP2 数据库
       # ============================================================
 
-      - name: Build cn.mrs from Country.mmdb
+      - name: Validate GeoIP2 database
         run: |
-          git clone https://github.com/MetaCubeX/geo.git geo-tool
-          cd geo-tool
-          go build -o ../geo-bin ./cmd/geo
-          cd ..
+          if [ ! -s dist/Country.mmdb ]; then
+            echo "ERROR: Country.mmdb was not generated or is empty."
+            exit 1
+          fi
 
-          cd dist
-          # 利用 geo 工具将 Country.mmdb 直接转为 meta 格式的 mrs 规则集
-          ../geo-bin convert ip -i maxmind -o meta -f cn.mrs Country.mmdb
-          cd ..
+          echo "Country.mmdb generated successfully."
+          echo "Size: $(wc -c < dist/Country.mmdb) bytes"
 
       # ============================================================
-      # 生成 Clash IP-CIDR 规则列表
+      # 生成 Clash IP-CIDR 规则
       # ============================================================
 
       - name: Create CN-ip-cidr-clash.list
@@ -234,30 +243,34 @@ jobs:
             > dist/CN-ip-cidr-clash.list
 
       # ============================================================
-      # 全量产物严格校验
+      # 检查 Clash 规则文件
       # ============================================================
 
-      - name: Validate All Final Artifacts
+      - name: Validate Clash list
         run: |
-          set -e
-          
-          artifacts=(
-            "dist/Country.mmdb"
-            "dist/CN-ip-cidr.txt"
-            "dist/CN-ip-cidr-clash.list"
-            "dist/cn.mrs"
-          )
+          if [ ! -s dist/CN-ip-cidr-clash.list ]; then
+            echo "ERROR: Clash list is empty."
+            exit 1
+          fi
 
-          for file in "${artifacts[@]}"; do
-            if [ ! -s "$file" ]; then
-              echo "ERROR: Critical artifact is missing or empty: $file"
-              exit 1
-            fi
-            echo "Verified artifact: $file ($(wc -c < "$file") bytes)"
-          done
+          invalid_count=$(awk '
+            !/^IP-CIDR,[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/([0-9]|[12][0-9]|3[0-2])$/ {
+              count++
+            }
+            END {
+              print count + 0
+            }
+          ' dist/CN-ip-cidr-clash.list)
+
+          if [ "$invalid_count" -gt 0 ]; then
+            echo "ERROR: Found $invalid_count invalid Clash rules."
+            exit 1
+          fi
+
+          echo "Clash list validation passed."
 
       # ============================================================
-      # 准备 release 分支
+      # 获取 release 分支
       # ============================================================
 
       - name: Prepare release branch
@@ -279,22 +292,24 @@ jobs:
           changed=false
 
           if ! cmp -s dist/Country.mmdb <(git show release:Country.mmdb 2>/dev/null); then
+            echo "Country.mmdb has changed."
             changed=true
           fi
+
           if ! cmp -s dist/CN-ip-cidr.txt <(git show release:CN-ip-cidr.txt 2>/dev/null); then
+            echo "CN-ip-cidr.txt has changed."
             changed=true
           fi
+
           if ! cmp -s dist/CN-ip-cidr-clash.list <(git show release:CN-ip-cidr-clash.list 2>/dev/null); then
-            changed=true
-          fi
-          if ! cmp -s dist/cn.mrs <(git show release:cn.mrs 2>/dev/null); then
+            echo "CN-ip-cidr-clash.list has changed."
             changed=true
           fi
 
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
           if [ "$changed" = "true" ]; then
-            echo "Changes detected across artifacts."
+            echo "Changes detected."
           else
             echo "No changes detected."
           fi
@@ -314,16 +329,14 @@ jobs:
           cp -f dist/CN-ip-cidr.txt ./
           cp -f dist/Country.mmdb ./
           cp -f dist/CN-ip-cidr-clash.list ./
-          cp -f dist/cn.mrs ./
 
           git add \
             Country.mmdb \
             CN-ip-cidr.txt \
-            CN-ip-cidr-clash.list \
-            cn.mrs
+            CN-ip-cidr-clash.list
 
           git commit \
-            -m "Updated all formats (mmdb, list, mrs) at $(date '+%Y-%m-%d %H:%M:%S')" \
+            -m "Updated at $(date '+%Y-%m-%d %H:%M:%S')" \
             || echo "No changes to commit"
 
           git push origin release
