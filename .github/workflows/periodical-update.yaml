@@ -213,10 +213,12 @@ jobs:
 
       - name: Install MetaCubeX tools for DAT and MRS
         run: |
-          # 修正：使用正确的 go install 语法（使用 @latest 或去掉版本直接拉取，或者用 go install 命令）
+          # 切换到 /tmp 目录安装全局工具，避免受到当前项目 go.mod 限制
+          cd /tmp
           go install github.com/metacubex/geo/cmd/geo@latest
           
-          # 克隆 meta-rules-converter 用于编译 mrs 规则集
+          # 回到工作目录并克隆 meta-rules-converter 用于编译 mrs 规则集
+          cd -
           git clone https://github.com/MetaCubeX/meta-rules-converter.git convert-tool
 
       - name: Build geoip.dat and cn.mrs
