@@ -37,7 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.22'   # 修复点：强制指定 Go 1.22+，避免使用默认的过时 Go 1.14
           cache: true
 
       - name: Download Go dependencies
@@ -213,7 +213,7 @@ jobs:
 
       - name: Clone and Build MetaCubeX tools (geo & meta-rules-converter)
         run: |
-          # 直接 clone 官方 geo 工具并编译，彻底绕过 go install 的版本语法限制
+          # 直接 clone 官方 geo 工具并编译
           git clone https://github.com/MetaCubeX/geo.git geo-tool
           cd geo-tool
           go build -o ../dist/geo-bin ./cmd/geo
