@@ -208,23 +208,20 @@ jobs:
           cd ..
 
       # ============================================================
-      # 生成 .mrs 规则集格式
+      # 生成 .mrs 规则集格式（使用官方 geo 工具直接从 mmdb 转换）
       # ============================================================
 
-      - name: Clone converter and build cn.mrs
+      - name: Build cn.mrs from Country.mmdb
         run: |
-          git clone https://github.com/MetaCubeX/meta-rules-converter.git convert-tool
-          cd convert-tool
-          # 直接利用清洗好的 IP 网段文本生成对应的 mrs 规则
-          go run ./ geoip -f ../dist/CN-ip-cidr.txt -o ../dist/
+          git clone https://github.com/MetaCubeX/geo.git geo-tool
+          cd geo-tool
+          go build -o ../geo-bin ./cmd/geo
           cd ..
 
-          # 规范化处理 mrs 文件命名
-          if [ -f "dist/CN.mrs" ] && [ ! -f "dist/cn.mrs" ]; then
-            mv dist/CN.mrs dist/cn.mrs
-          elif [ -f "dist/cn-ip-cidr.mrs" ] && [ ! -f "dist/cn.mrs" ]; then
-            mv dist/cn-ip-cidr.mrs dist/cn.mrs
-          fi
+          cd dist
+          # 利用 geo 工具将 Country.mmdb 直接转为 meta 格式的 mrs 规则集
+          ../geo-bin convert ip -i maxmind -o meta -f cn.mrs Country.mmdb
+          cd ..
 
       # ============================================================
       # 生成 Clash IP-CIDR 规则列表
